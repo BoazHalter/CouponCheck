@@ -1,6 +1,6 @@
 import requests
+from datetime import datetime
 
-# Setup session and headers
 session = requests.Session()
 headers = {
     "User-Agent": "Mozilla/5.0",
@@ -11,12 +11,14 @@ headers = {
     "Pragma": "no-cache"
 }
 
-# Load coupons
 with open("coupons.txt", "r") as f:
     coupons = [line.strip() for line in f if line.strip()]
 
-# Output results
+timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
 with open("results.txt", "w") as out:
+    out.write(f"Checked at: {timestamp}\n\n")
+
     for code in coupons:
         url = f"https://bulenox.com/member/ajax?do=check_coupon&coupon={code}"
         try:
@@ -34,10 +36,10 @@ with open("results.txt", "w") as out:
             else:
                 status = f"❓ Unknown response: {result}"
 
-            print(f"{code}: {status}")
             out.write(f"{code}: {status}\n")
+            print(f"{code}: {status}")
 
         except Exception as e:
             error = f"❌ Request failed - {e}"
-            print(f"{code}: {error}")
             out.write(f"{code}: {error}\n")
+            print(f"{code}: {error}")
