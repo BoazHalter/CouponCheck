@@ -5,6 +5,8 @@ on:
     branches:
       - main
   workflow_dispatch:
+  schedule:
+    - cron: '3 * * * *'  # Runs every hour at minute 3
 
 jobs:
   check-coupons:
