@@ -1,18 +1,26 @@
 import requests
 
+# Setup session and headers
+session = requests.Session()
 headers = {
     "User-Agent": "Mozilla/5.0",
-    "Referer": "https://bulenox.com/member/signup"
+    "Referer": "https://bulenox.com/member/signup",
+    "Accept": "application/json",
+    "X-Requested-With": "XMLHttpRequest",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache"
 }
 
+# Load coupons
 with open("coupons.txt", "r") as f:
     coupons = [line.strip() for line in f if line.strip()]
 
+# Output results
 with open("results.txt", "w") as out:
     for code in coupons:
         url = f"https://bulenox.com/member/ajax?do=check_coupon&coupon={code}"
         try:
-            response = requests.get(url, headers=headers)
+            response = session.get(url, headers=headers)
             result = response.text.strip().lower()
 
             if result == "true":
@@ -21,7 +29,7 @@ with open("results.txt", "w") as out:
                 status = "❌ Invalid"
             elif "expired" in result:
                 status = "⏳ Expired"
-            elif "error" in result or "<!DOCTYPE html>" in result:
+            elif "<!doctype html>" in result or "error" in result:
                 status = "❌ Error page returned"
             else:
                 status = f"❓ Unknown response: {result}"
@@ -30,5 +38,6 @@ with open("results.txt", "w") as out:
             out.write(f"{code}: {status}\n")
 
         except Exception as e:
-            print(f"{code}: ❌ Request failed - {e}")
-            out.write(f"{code}: ❌ Request failed - {e}\n")
+            error = f"❌ Request failed - {e}"
+            print(f"{code}: {error}")
+            out.write(f"{code}: {error}\n")
