@@ -1,7 +1,10 @@
 name: Run Coupon Checker
 
 on:
-  workflow_dispatch:  # Allows manual trigger from GitHub UI
+  push:
+    branches:
+      - main
+  workflow_dispatch:
 
 jobs:
   check-coupons:
@@ -22,4 +25,10 @@ jobs:
 
     - name: Run coupon checker
       run: |
-        python coupon_checker.py
+        python Check.py
+
+    - name: Upload results
+      uses: actions/upload-artifact@v3
+      with:
+        name: coupon-results
+        path: results.txt
