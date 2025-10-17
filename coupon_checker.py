@@ -4,7 +4,7 @@ import requests
 url = "https://bulenox.com/member/signup"
 
 # Load coupons
-with open("coupons.txt", "r") as f:
+with open("cupons.txt", "r") as f:
     coupons = [line.strip() for line in f if line.strip()]
 
 # Simulate form data (adjust as needed)
