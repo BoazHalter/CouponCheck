@@ -1,9 +1,9 @@
 name: Run Coupon Checker
+
 on:
   push:
     branches:
       - main
-      - analyze_changes
   workflow_dispatch:
   schedule:
     - cron: '3 * * * *'  # Runs every hour at minute 3
@@ -11,12 +11,10 @@ on:
 jobs:
   check-coupons:
     runs-on: ubuntu-latest
+
     steps:
     - name: Checkout repo
       uses: actions/checkout@v3
-      # Fetch history to check for changes and commit new ones
-      with:
-        fetch-depth: 0
 
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -30,36 +28,9 @@ jobs:
     - name: Run coupon checker
       run: |
         python coupon_checker.py
-        
-    - name: Upload results (Artifact)
+
+    - name: Upload results
       uses: actions/upload-artifact@v4
       with:
         name: coupon-results
         path: results.txt
-        
-    # --- START: New Steps to Persist Results for Comparison ---
-    - name: Configure Git for Commit
-      run: |
-        git config user.name "github-actions[bot]"
-        git config user.email "github-actions[bot]@users.noreply.github.com"
-        
-    - name: Stage and Commit New Results
-      run: |
-        # Stage the results.txt file
-        git add results.txt
-        
-        # Check if results.txt has actually changed before trying to commit
-        if git diff --staged --quiet; then
-          echo "No change in results.txt since last run. Skipping commit."
-        else
-          git commit -m "Automated: Update coupon check results for analysis"
-        fi
-        
-    - name: Push Committed Changes
-      # Use the checkout action's token if possible, or an external action for simplicity
-      uses: ad-m/github-push-action@master
-      with:
-        branch: main 
-        # CRITICAL: Use your securely stored Personal Access Token (PAT)
-        github_token: ${{ secrets.PAT }} 
-    # --- END: New Steps to Persist Results for Comparison ---
