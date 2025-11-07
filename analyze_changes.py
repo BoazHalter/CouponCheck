@@ -3,12 +3,13 @@ import re
 from collections import defaultdict
 
 # --- Configuration ---
-PREVIOUS_FILE = "./previous_run/result.txt"
-CURRENT_FILE = "./current_run_data/result.txt"
+# Path where the previous run's artifact will be downloaded and unzipped
+PREVIOUS_FILE = "./previous_run_data/result.txt" 
+# Path where the current run's artifact will be downloaded and unzipped
+CURRENT_FILE = "./current_run_data/result.txt" 
 REPORT_FILE = "change_report.txt"
 
 # Regex to parse the line: CouponCode: [StatusEmoji] StatusMessage
-# We treat '❌' as INVALID and any other leading emoji (or lack thereof) as VALID for simplicity
 LINE_PATTERN = re.compile(r'(\w+):\s*(?:(❌)|(.+?))\s*(.+)')
 
 def parse_results(file_path):
@@ -25,8 +26,8 @@ def parse_results(file_path):
                     status = 'INVALID' if invalid_emoji == '❌' else 'VALID'
                     results[code] = status
     except FileNotFoundError:
-        # This is expected for the first run or if the previous commit data is missing
-        print(f"Warning: Previous results file not found at {file_path}. Proceeding without comparison.")
+        # Expected for the very first run of the checker (no previous artifact yet)
+        print(f"Warning: Results file not found at {file_path}. Proceeding.")
     return results
 
 def analyze_changes(previous_data, current_data):
@@ -36,6 +37,10 @@ def analyze_changes(previous_data, current_data):
     # Identify all unique coupon codes across both runs
     all_codes = set(previous_data.keys()) | set(current_data.keys())
 
+    # Get baseline summary for report
+    prev_valid_count = sum(1 for status in previous_data.values() if status == 'VALID')
+    curr_valid_count = sum(1 for status in current_data.values() if status == 'VALID')
+    
     for code in sorted(list(all_codes)):
         prev_status = previous_data.get(code)
         curr_status = current_data.get(code)
@@ -44,8 +49,8 @@ def analyze_changes(previous_data, current_data):
             # New Coupon
             report.append(f"[NEW]   {code} has appeared. Current Status: {curr_status}")
         elif curr_status is None:
-            # Missing Coupon
-            report.append(f"[MISSING] {code} was in previous run ({prev_status}) but is missing now.")
+            # Missing Coupon (Removed from list or check failed to find it)
+            report.append(f"[MISSING] {code} was present ({prev_status}) but is missing now.")
         elif prev_status != curr_status:
             # Status Change
             report.append(f"[CHANGE] {code} status changed: {prev_status} -> {curr_status}")
@@ -54,6 +59,11 @@ def analyze_changes(previous_data, current_data):
     # Write the report
     with open(REPORT_FILE, 'w', encoding='utf-8') as f:
         f.write("--- COUPON STATUS CHANGE ANALYSIS REPORT ---\n\n")
+        f.write(f"Valid Coupons (Previous Run): {prev_valid_count}\n")
+        f.write(f"Valid Coupons (Current Run):  {curr_valid_count}\n")
+        f.write(f"Net Change in Valid:          {curr_valid_count - prev_valid_count}\n")
+        f.write("-" * 40 + "\n\n")
+        
         if not report:
             f.write("✅ No changes in coupon statuses or inventory detected between runs.")
         else:
@@ -63,8 +73,9 @@ def analyze_changes(previous_data, current_data):
     print(f"Analysis complete. Report written to {REPORT_FILE}")
     
 if __name__ == "__main__":
-    # Ensure the directory for current data exists (from unzip step in YAML)
+    # Ensure all necessary directories exist
     os.makedirs(os.path.dirname(CURRENT_FILE), exist_ok=True)
+    os.makedirs(os.path.dirname(PREVIOUS_FILE), exist_ok=True)
     
     previous_results = parse_results(PREVIOUS_FILE)
     current_results = parse_results(CURRENT_FILE)
