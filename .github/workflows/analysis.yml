@@ -1,0 +1,57 @@
+name: Coupon Status Change Analyzer
+
+on:
+  # Triggers immediately after the first workflow is successful
+  workflow_run:
+    # IMPORTANT: This must match the exact name from your screenshot: "Run Coupon Checker"
+    workflows: ["Run Coupon Checker"] 
+    types:
+      - completed
+    if: success()
+
+jobs:
+  change_analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        # The first checkout gets the 'analysis.yml' and 'analyze_changes.py' for the current run
+
+      # --- Download and Prepare Current Results ---
+      - name: Download Coupon Results Artifact (Current Run)
+        uses: actions/download-artifact@v4
+        with:
+          # This matches the artifact name from your screenshot: "coupon-results"
+          name: coupon-results 
+          path: ./current_run 
+      
+      - name: Unzip Coupon Results
+        run: |
+          # Finds the zip file downloaded by the previous step and extracts it.
+          # The output file 'result.txt' will be in the 'current_run_data' directory.
+          unzip ./current_run/*.zip -d ./current_run_data
+          
+      # --- Prepare Previous Results (Data for Comparison) ---
+      # This step checks out the *same* repository again, but to a different path
+      # to access the 'result.txt' that was COMMITTED by the *previous* successful run.
+      - name: Checkout Previous Run's Committed Data
+        uses: actions/checkout@v4
+        with:
+          path: ./previous_run
+          # This uses the default GITHUB_TOKEN which is sufficient for read access
+
+      # --- Run Analysis ---
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Run Change Analysis Script
+        run: python analyze_changes.py
+
+      # --- Upload Final Report ---
+      - name: Upload Change Report Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coupon-change-report
+          path: ./change_report.txt
