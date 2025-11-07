@@ -1,46 +1,76 @@
 name: Coupon Status Change Analyzer
 
 on:
-  # Triggers immediately after the first workflow is successful
+  # Triggers immediately after the "Run Coupon Checker" workflow is successful
   workflow_run:
-    # IMPORTANT: This must match the exact name from your screenshot: "Run Coupon Checker"
-    workflows: ["Run Coupon Checker"] 
-    types:
-      - completed
+    workflows: ["Run Coupon Checker"] # Must match the exact name
+    types: [completed]
     if: success()
 
 jobs:
   change_analysis:
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        # The first checkout gets the 'analysis.yml' and 'analyze_changes.py' for the current run
-
-      # --- Download and Prepare Current Results ---
-      - name: Download Coupon Results Artifact (Current Run)
-        uses: actions/download-artifact@v4
-        with:
-          # This matches the artifact name from your screenshot: "coupon-results"
-          name: coupon-results 
-          path: ./current_run 
+    # Grant necessary permissions for the workflow to read artifacts
+    permissions:
+      actions: read
+      contents: read
       
-      - name: Unzip Coupon Results
-        run: |
-          # Finds the zip file downloaded by the previous step and extracts it.
-          # The output file 'result.txt' will be in the 'current_run_data' directory.
-          unzip ./current_run/*.zip -d ./current_run_data
-          
-      # --- Prepare Previous Results (Data for Comparison) ---
-      # This step checks out the *same* repository again, but to a different path
-      # to access the 'result.txt' that was COMMITTED by the *previous* successful run.
-      - name: Checkout Previous Run's Committed Data
+    steps:
+      - name: Checkout Code (for analysis.py)
         uses: actions/checkout@v4
+        
+      # --- DOWNLOAD PREVIOUS RUN'S ARTIFACT ---
+      # This action searches for and downloads the artifact from the *last successful* run
+      - name: Download Previous Run's Artifact (Baseline)
+        uses: dawidd6/action-download-artifact@v3
         with:
-          path: ./previous_run
-          # This uses the default GITHUB_TOKEN which is sufficient for read access
-
-      # --- Run Analysis ---
+          workflow: Run Coupon Checker # Workflow name to search
+          name: coupon-results       # Artifact name to download
+          path: ./previous_run       # Directory to place the downloaded zip file
+          # Find the artifact from the *last successful* run (not this current one)
+          run_conclusion: success 
+          check_artifacts: true
+          
+      - name: Unzip Previous Results
+        # The zip file is downloaded into the 'previous_run' directory
+        run: |
+          unzip ./previous_run/*.zip -d ./previous_run_data
+          
+      # --- DOWNLOAD CURRENT RUN'S ARTIFACT ---
+      # This is the standard way to download the artifact linked to the current workflow_run
+      - name: Download Current Run Artifact
+        uses: actions/github-script@v7
+        id: download_current
+        with:
+          script: |
+            # Find the artifact associated with the workflow_run event
+            const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.payload.workflow_run.id,
+            });
+            const matchArtifact = artifacts.data.artifacts.find(artifact => artifact.name === 'coupon-results');
+            
+            if (!matchArtifact) {
+              core.setFailed('Artifact "coupon-results" not found in the workflow run.');
+              return;
+            }
+            
+            const download = await github.rest.actions.downloadArtifact({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              artifact_id: matchArtifact.id,
+              archive_format: 'zip',
+            });
+            
+            require('fs').writeFileSync('current-results.zip', Buffer.from(download.data));
+            
+      - name: Unzip Current Results
+        # The zip file is created as 'current-results.zip' in the root directory
+        run: |
+          unzip current-results.zip -d ./current_run_data
+          
+      # --- RUN ANALYSIS ---
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -49,7 +79,7 @@ jobs:
       - name: Run Change Analysis Script
         run: python analyze_changes.py
 
-      # --- Upload Final Report ---
+      # --- UPLOAD FINAL REPORT ---
       - name: Upload Change Report Artifact
         uses: actions/upload-artifact@v4
         with:
