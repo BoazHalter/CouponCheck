@@ -14,12 +14,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download the big artifact bundle
+      - name: Download latest bundle (works from any branch)
         uses: dawidd6/action-download-artifact@v6
         with:
           workflow: download-all-coupon-results.yml
           name: ALL-COUPON-RESULTS-*
           path: downloaded/
+          branch: main                  # ← forces from main
+          # search_artifacts: true      # ← alternative, uncomment if you prefer
 
       - name: Run analysis
         run: python analyze_coupon_results.py
