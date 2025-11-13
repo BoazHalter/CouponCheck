@@ -2,17 +2,23 @@
 import zipfile, re, glob, os
 from collections import defaultdict, Counter
 
-# The workflow now puts the big zip in downloaded/bundle.zip and extracts to downloaded/
-# So we look there for the extracted result.txt files
-EXTRACTED_DIR = "downloaded"
-
-print(f"Looking for result.txt files in ./{EXTRACTED_DIR}/")
-
-txt_files = glob.glob(f"{EXTRACTED_DIR}/*result.txt")
-if not txt_files:
-    print("No result.txt files found! Did the download step work?")
+# The workflow extracts the big bundle → contains many coupon-results-*.zip
+# We now extract those inner zips
+INNER_ZIPS = glob.glob("downloaded/coupon-results-*.zip")
+if not INNER_ZIPS:
+    print("No inner coupon-results-*.zip files found!")
     exit(1)
 
+print(f"Found {len(INNER_ZIPS)} inner zip files – extracting result.txt from each...")
+
+os.makedirs("extracted", exist_ok=True)
+for zip_path in INNER_ZIPS:
+    with zipfile.ZipFile(zip_path) as z:
+        for name in z.namelist():
+            if name.endswith("result.txt"):
+                z.extract(name, "extracted")
+
+txt_files = glob.glob("extracted/*/result.txt") + glob.glob("extracted/result.txt")
 print(f"Found {len(txt_files)} result.txt files – starting analysis...")
 
 valid_per_day = defaultdict(int)
@@ -68,8 +74,7 @@ Date       | Valid | Invalid | Expired | Error | Success%
 ---------- | ----- | ------- | ------- | ----- | --------
 """
 for date in sorted(valid_per_day.keys(), reverse=True):
-    if date == "unknown":
-        continue
+    if date == "unknown": continue
     v = valid_per_day[date]
     i = invalid_per_day[date]
     e = expired_per_day[date]
@@ -93,4 +98,4 @@ with open("results/FULL_REPORT.md", "w") as f:
 with open("results/VALID_CODES.txt", "w") as f:
     f.write("\n".join(sorted(valid_codes)))
 
-print("Analysis complete – report ready!")
+print("ANALYSIS COMPLETE – REPORT READY!")
