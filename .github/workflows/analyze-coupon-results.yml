@@ -14,34 +14,34 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Find and download the latest ALL-COUPON-RESULTS artifact
+      - name: Download latest ALL-COUPON-RESULTS artifact (bulletproof)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          echo "Searching for the latest ALL-COUPON-RESULTS artifact..."
+          echo "Finding the newest ALL-COUPON-RESULTS artifact..."
 
-          # Get the newest artifact that starts with ALL-COUPON-RESULTS-
-          ARTIFACT_ID=$(gh api \
-            "/repos/${{ github.repository }}/actions/artifacts" \
+          # Simple, robust filter – works on every runner
+          ARTIFACT_ID=$(gh api "/repos/${{ github.repository }}/actions/artifacts?per_page=100" \
             --paginate \
-            -q '.artifacts[] 
-                 | select(.name | startswith("ALL-COUPON-RESULTS-") and (.expired==false or .expired==null))
-                 | .id' \
-            | head -1)
+            --jq '.artifacts[] 
+                  | select(.name | test("^ALL-COUPON-RESULTS-")) 
+                  | select(.expired == false or .expired == null) 
+                  | .id' \
+            | head -n 1)
 
           if [[ -z "$ARTIFACT_ID" ]]; then
-            echo "No artifact found!"
+            echo "ERROR: No ALL-COUPON-RESULTS artifact found!"
             exit 1
           fi
 
           echo "Found artifact ID: $ARTIFACT_ID – downloading with curl..."
           mkdir -p downloaded
 
-          curl -L \
-               -H "Authorization: token $GH_TOKEN" \
-               -H "Accept: application/vnd.github.v3+json" \
-               "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/$ARTIFACT_ID/zip" \
-               -o downloaded/bundle.zip
+          curl -fL \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/$ARTIFACT_ID/zip" \
+            -o downloaded/bundle.zip
 
           echo "Unzipping..."
           unzip -q downloaded/bundle.zip -d downloaded/
