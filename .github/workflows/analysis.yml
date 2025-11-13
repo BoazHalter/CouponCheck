@@ -1,20 +1,20 @@
 name: Download All Coupon Results Ever
 
 on:
-  workflow_dispatch:    # You trigger it manually from the Actions tab
+  workflow_dispatch:
 
 permissions:
   contents: read
-  actions: read         # Needed to list and download artifacts
+  actions: read   # Required to list + download artifacts
 
 jobs:
-  download-all-artifacts:
+  download-all:
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository (optional, only if you need code)
-        uses: actions/checkout@v4
+    env:
+      GH_TOKEN: ${{ github.token }}   # This line fixes your error
 
-      - name: Download EVERY coupon-results artifact from the repo
+    steps:
+      - name: Download every coupon-results artifact in the repository
         run: |
           mkdir -p all-artifacts
           cd all-artifacts
@@ -23,38 +23,40 @@ jobs:
 
           page=1
           while true; do
-            echo "Fetching page $page of artifacts..."
+            echo "Fetching page $page..."
             artifacts=$(gh api \
               "/repos/${{ github.repository }}/actions/artifacts?per_page=100&page=$page" \
               --paginate \
-              -q '.artifacts[] | select(.expired == false) | .id')
+              -q '.artifacts[] | select(.expired == false) | .id'
+            )
 
             if [[ -z "$artifacts" ]]; then
-              echo "No more artifacts to fetch."
+              echo "No more artifacts – finished!"
               break
             fi
 
             echo "$artifacts" | while read -r id; do
-              if [[ -n "$id" ]]; then
-                echo "Downloading artifact ID $id ..."
-                gh api \
-                  --silent \
-                  "/repos/${{ github.repository }}/actions/artifacts/$id/zip" \
-                  -o "coupon-results-artifact-$id.zip"
-              fi
+              [[ -z "$id" ]] && continue
+              echo "Downloading artifact $id ..."
+              gh api \
+                --silent \
+                "/repos/${{ github.repository }}/actions/artifacts/$id/zip" \
+                -o "coupon-results-$id.zip"
             done
 
             ((page++))
           done
 
-          total=$(ls -1 coupon-results-artifact-*.zip 2>/dev/null | wc -l)
-          echo "Successfully downloaded $total artifacts!"
-          ls -lh coupon-results-artifact-*.zip | head -15
+          total=$(ls -1 *.zip 2>/dev/null | wc -l)
+          echo "================================================================="
+          echo "SUCCESS: Downloaded $total coupon-results artifacts in total!"
+          echo "================================================================="
+          ls -lh *.zip | wc -l
 
-      - name: Upload all downloaded artifacts as one big bundle
+      - name: Upload everything as one big artifact (easy download)
         uses: actions/upload-artifact@v4
         with:
-          name: all-coupon-results-ever-${{ github.run_number }}-${{ github.run_attempt }}
-          path: all-artifacts/coupon-results-artifact-*.zip
-          retention-days: 30
+          name: ALL-COUPON-RESULTS-${{ github.run_number }}-${{ github.run_attempt }}
+          path: all-artifacts/*.zip
+          retention-days: 90
           if-no-files-found: error
