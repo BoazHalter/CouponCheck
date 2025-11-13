@@ -1,45 +1,47 @@
 name: Download All Coupon Results Ever
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:   # Run manually from the Actions tab
 
+# These permissions are the key — without them it fails silently or with weird errors
 permissions:
-  contents: read
-  actions: read
+  contents: read      # Needed to checkout code (if you want)
+  actions: read       # REQUIRED to list and download artifacts via API
 
 jobs:
-  download-all:
+  download-all-artifacts:
     runs-on: ubuntu-latest
+
     env:
-      GH_TOKEN: ${{ github.token }}
+      GH_TOKEN: ${{ github.token }}   # Makes gh cli work inside Actions
 
     steps:
-      - name: Download every coupon-results artifact (final working version)
+      - name: Create folder and download ALL artifacts
         run: |
           mkdir -p all-artifacts
           cd all-artifacts
 
-          echo "Starting download of all existing artifacts..."
+          echo "Starting download of all coupon-results artifacts..."
 
           page=1
           while true; do
-            echo "Fetching page $page..."
+            echo "Fetching page $page of artifacts list..."
+            
+            # Get list of artifact IDs (automatically handles multiple pages)
             artifacts=$(gh api \
               "/repos/${{ github.repository }}/actions/artifacts?per_page=100&page=$page" \
               --paginate \
               -q '.artifacts[] | select(.expired == false) | .id'
             )
 
-            if [[ -z "$artifacts" ]]; then
-              echo "No more artifacts – done!"
-              break
-            fi
+            # Break if no more artifacts
+            [[ -z "$artifacts" ]] && { echo "No more artifacts. Done fetching list."; break; }
 
+            # Download each one
             echo "$artifacts" | while read -r id; do
               [[ -z "$id" ]] && continue
-              echo "Downloading artifact ID $id ..."
-              gh api \
-                --silent \
+              echo "Downloading artifact ID: $id ..."
+              gh api --silent \
                 "/repos/${{ github.repository }}/actions/artifacts/$id/zip" \
                 --output "coupon-results-$id.zip"
             done
@@ -48,14 +50,14 @@ jobs:
           done
 
           total=$(ls -1 coupon-results-*.zip 2>/dev/null | wc -l)
-          echo "======================================================================"
-          echo "SUCCESS: Downloaded $total artifacts in total!"
-          echo "======================================================================"
-          ls -lh coupon-results-*.zip | head -20
+          echo "=================================================================="
+          echo "SUCCESS! Downloaded $total artifacts in total."
+          echo "=================================================================="
 
-      - name: Bundle and upload everything as one artifact
+      - name: Upload all downloaded artifacts as one bundle
         uses: actions/upload-artifact@v4
         with:
-          name: ALL-COUPON-RESULTS-${{ github.run_number }}
+          name: ALL-COUPON-RESULTS-${{ github.run_number }}-${{ github.run_attempt }}
           path: all-artifacts/coupon-results-*.zip
           retention-days: 90
+          if-no-files-found: error
