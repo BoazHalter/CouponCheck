@@ -1,7 +1,7 @@
-name: Analyze All Coupon Results
+name: Analyze All Coupon Results   # ← This gives you the nice name + Run button
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:   # ← This enables the manual "Run workflow" button
 
 permissions:
   contents: read
@@ -14,11 +14,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Find and download the latest ALL-COUPON-RESULTS artifact (any run)
+      - name: Download the latest ALL-COUPON-RESULTS artifact (any run)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Find the most recent artifact that matches the name
           LATEST_ARTIFACT_ID=$(gh api \
             "/repos/${{ github.repository }}/actions/artifacts" \
             --paginate \
@@ -43,7 +42,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Coupon-Analysis-${{ github.run_number }}
-          path: results/
-          retention-days: 90          name: Coupon-Analysis-${{ github.run_number }}
           path: results/
           retention-days: 90
