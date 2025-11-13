@@ -2,24 +2,14 @@
 import zipfile, re, glob, os
 from collections import defaultdict, Counter
 
-# The workflow extracts the big bundle → contains many coupon-results-*.zip
-# We now extract those inner zips
+# The big bundle contains many coupon-results-*.zip
+# Each of those contains result.txt directly (no subfolder)
 INNER_ZIPS = glob.glob("downloaded/coupon-results-*.zip")
 if not INNER_ZIPS:
-    print("No inner coupon-results-*.zip files found!")
+    print("No inner coupon-results-*.zip files found in ./downloaded/")
     exit(1)
 
-print(f"Found {len(INNER_ZIPS)} inner zip files – extracting result.txt from each...")
-
-os.makedirs("extracted", exist_ok=True)
-for zip_path in INNER_ZIPS:
-    with zipfile.ZipFile(zip_path) as z:
-        for name in z.namelist():
-            if name.endswith("result.txt"):
-                z.extract(name, "extracted")
-
-txt_files = glob.glob("extracted/*/result.txt") + glob.glob("extracted/result.txt")
-print(f"Found {len(txt_files)} result.txt files – starting analysis...")
+print(f"Found {long(INNER_ZIPS)} inner zip files – extracting result.txt from each...")
 
 valid_per_day = defaultdict(int)
 invalid_per_day = defaultdict(int)
@@ -30,37 +20,41 @@ valid_codes = set()
 total_checks = 0
 date_pattern = re.compile(r"Checked at: (\d{4}-\d{2}-\d{2})")
 
-for txt_file in txt_files:
-    with open(txt_file, encoding="utf-8", errors="ignore") as f:
-        lines = f.readlines()
-
-    current_date = "unknown"
-    for line in lines:
-        line = line.strip()
-        if line.startswith("Checked at:"):
-            m = date_pattern.search(line)
-            if m:
-                current_date = m.group(1)
+for zip_path in INNER_ZIPS:
+    with zipfile.ZipFile(zip_path) as z:
+        # result.txt is directly inside each inner zip
+        if "result.txt" not in z.namelist():
             continue
-        if ":" not in line:
-            continue
+        content = z.read("result.txt").decode("utf-8", errors="ignore")
+        lines = content.splitlines()
 
-        coupon, status = line.split(":", 1)
-        coupon = coupon.strip()
-        status = status.strip()
+        current_date = "unknown"
+        for line in lines:
+            line = line.strip()
+            if line.startswith("Checked at:"):
+                m = date_pattern.search(line)
+                if m:
+                    current_date = m.group(1)
+                continue
+            if ":" not in line:
+                continue
 
-        total_checks += 1
-        all_coupons[coupon] += 1
+            coupon, status = line.split(":", 1)
+            coupon = coupon.strip()
+            status = status.strip()
 
-        if "Valid" in status:
-            valid_per_day[current_date] += 1
-            valid_codes.add(coupon)
-        elif "Invalid" in status:
-            invalid_per_day[current_date] += 1
-        elif "Expired" in status:
-            expired_per_day[current_date] += 1
-        elif "Error" in status:
-            error_per_day[current_date] += 1
+            total_checks += 1
+            all_coupons[coupon] += 1
+
+            if "Valid" in status:
+                valid_per_day[current_date] += 1
+                valid_codes.add(coupon)
+            elif "Invalid" in status:
+                invalid_per_day[current_date] += 1
+            elif "Expired" in status:
+                expired_per_day[current_date] += 1
+            elif "Error" in status:
+                error_per_day[current_date] += 1
 
 # Generate report
 report = f"""# Coupon Results — Full Historical Analysis
@@ -93,9 +87,9 @@ report += "  ".join(sorted(valid_codes))
 report += "\n```\n"
 
 os.makedirs("results", exist_ok=True)
-with open("results/FULL_REPORT.md", "w") as f:
+with open("results/FULL_REPORT.md", "w", encoding="utf-8") as f:
     f.write(report)
-with open("results/VALID_CODES.txt", "w") as f:
+with open("results/VALID_CODES.txt", "w", encoding="utf-8") as f:
     f.write("\n".join(sorted(valid_codes)))
 
-print("ANALYSIS COMPLETE – REPORT READY!")
+print(f"ANALYSIS COMPLETE! Found {len(valid_codes)} valid codes across {total_checks:,} checks.")
