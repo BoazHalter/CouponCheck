@@ -5,16 +5,16 @@ on:
 
 permissions:
   contents: read
-  actions: read   # Required to list + download artifacts
+  actions: read
 
 jobs:
   download-all:
     runs-on: ubuntu-latest
     env:
-      GH_TOKEN: ${{ github.token }}   # This line fixes your error
+      GH_TOKEN: ${{ github.token }}
 
     steps:
-      - name: Download every coupon-results artifact in the repository
+      - name: Download every coupon-results artifact (final working version)
         run: |
           mkdir -p all-artifacts
           cd all-artifacts
@@ -31,32 +31,31 @@ jobs:
             )
 
             if [[ -z "$artifacts" ]]; then
-              echo "No more artifacts – finished!"
+              echo "No more artifacts – done!"
               break
             fi
 
             echo "$artifacts" | while read -r id; do
               [[ -z "$id" ]] && continue
-              echo "Downloading artifact $id ..."
+              echo "Downloading artifact ID $id ..."
               gh api \
                 --silent \
                 "/repos/${{ github.repository }}/actions/artifacts/$id/zip" \
-                -o "coupon-results-$id.zip"
+                --output "coupon-results-$id.zip"
             done
 
             ((page++))
           done
 
-          total=$(ls -1 *.zip 2>/dev/null | wc -l)
-          echo "================================================================="
-          echo "SUCCESS: Downloaded $total coupon-results artifacts in total!"
-          echo "================================================================="
-          ls -lh *.zip | wc -l
+          total=$(ls -1 coupon-results-*.zip 2>/dev/null | wc -l)
+          echo "======================================================================"
+          echo "SUCCESS: Downloaded $total artifacts in total!"
+          echo "======================================================================"
+          ls -lh coupon-results-*.zip | head -20
 
-      - name: Upload everything as one big artifact (easy download)
+      - name: Bundle and upload everything as one artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ALL-COUPON-RESULTS-${{ github.run_number }}-${{ github.run_attempt }}
-          path: all-artifacts/*.zip
+          name: ALL-COUPON-RESULTS-${{ github.run_number }}
+          path: all-artifacts/coupon-results-*.zip
           retention-days: 90
-          if-no-files-found: error
