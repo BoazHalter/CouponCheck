@@ -14,19 +14,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download latest bundle (works from any branch)
+      - name: Download the latest ALL-COUPON-RESULTS artifact from main
         uses: dawidd6/action-download-artifact@v6
         with:
+          github_token: ${{ github.token }}
           workflow: download-all-coupon-results.yml
+          branch: main
+          workflow_conclusion: success     # ← THIS LINE FIXES IT
           name: ALL-COUPON-RESULTS-*
           path: downloaded/
-          branch: main                  # ← forces from main
-          # search_artifacts: true      # ← alternative, uncomment if you prefer
+          check_artifacts: true            # extra safety
 
       - name: Run analysis
         run: python analyze_coupon_results.py
 
-      - name: Upload report
+      - name: Upload report + valid codes
         uses: actions/upload-artifact@v4
         with:
           name: Coupon-Analysis-${{ github.run_number }}
