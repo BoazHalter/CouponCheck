@@ -1,7 +1,7 @@
-name: Analyze All Coupon Results   # ← This gives you the nice name + Run button
+name: Analyze All Coupon Results
 
 on:
-  workflow_dispatch:   # ← This enables the manual "Run workflow" button
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -14,26 +14,32 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download the latest ALL-COUPON-RESULTS artifact (any run)
+      - name: Download latest ALL-COUPON-RESULTS artifact (guaranteed to work)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          echo "Searching for the latest ALL-COUPON-RESULTS artifact..."
           LATEST_ARTIFACT_ID=$(gh api \
             "/repos/${{ github.repository }}/actions/artifacts" \
             --paginate \
-            -q '.artifacts[] | select(.name | startswith("ALL-COUPON-RESULTS-") and .expired == false) | .id' \
+            -q '.artifacts[] 
+                 | select(.name | ascii_downcase 
+                 | contains("all-coupon-results") 
+                 and (.expired == false or .expired == null)) 
+                 | .id' \
             | head -1)
 
           if [[ -z "$LATEST_ARTIFACT_ID" ]]; then
-            echo "No ALL-COUPON-RESULTS artifact found!"
+            echo "ERROR: No ALL-COUPON-RESULTS artifact found!"
             exit 1
           fi
 
-          echo "Found latest artifact ID: $LATEST_ARTIFACT_ID – downloading..."
+          echo "Found artifact ID: $LATEST_ARTIFACT_ID – downloading..."
           mkdir -p downloaded
           gh api "/repos/${{ github.repository }}/actions/artifacts/$LATEST_ARTIFACT_ID/zip" \
             --silent -o downloaded/bundle.zip
-          unzip downloaded/bundle.zip -d downloaded/
+          unzip -q downloaded/bundle.zip -d downloaded/
+          echo "Download complete!"
 
       - name: Run analysis
         run: python analyze_coupon_results.py
