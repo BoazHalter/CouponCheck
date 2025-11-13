@@ -5,47 +5,41 @@ on:
 
 permissions:
   contents: read
-  actions: read
+  actions: read     # Required to list + download artifacts
 
 jobs:
-  download-all-artifacts:
+  download-all:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
 
     steps:
-      - name: Download ALL coupon-results artifacts (works on every runner)
+      - name: Download ALL coupon-results artifacts using curl (100% reliable)
         run: |
           mkdir -p all-artifacts
           cd all-artifacts
 
-          echo "Starting download of all artifacts..."
-
-          # Detect which output flag the current gh version supports
-          if gh api --help 2>/dev/null | grep -q -- '--output'; then
-            OUTPUT_FLAG="--output"
-          else
-            OUTPUT_FLAG="-o"
-          fi
-          echo "Using output flag: $OUTPUT_FLAG"
+          echo "Starting download of every existing coupon-results artifact..."
 
           page=1
           while true; do
-            echo "Fetching page $page..."
+            echo "Fetching page $page of artifact list..."
             artifacts=$(gh api \
               "/repos/${{ github.repository }}/actions/artifacts?per_page=100&page=$page" \
               --paginate \
               -q '.artifacts[] | select(.expired == false) | .id'
             )
 
-            [[ -z "$artifacts" ]] && { echo "No more artifacts – finished!"; break; }
+            [[ -z "$artifacts" ]] && { echo "No more artifacts – all done!"; break; }
 
             echo "$artifacts" | while read -r id; do
               [[ -z "$id" ]] && continue
               echo "Downloading artifact ID $id ..."
-              gh api --silent \
-                "/repos/${{ github.repository }}/actions/artifacts/$id/zip" \
-                $OUTPUT_FLAG "coupon-results-$id.zip"
+              curl -L \
+                -H "Authorization: token $GH_TOKEN" \
+                -H "Accept: application/vnd.github.v3+json" \
+                "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/$id/zip" \
+                -o "coupon-results-$id.zip"
             done
 
             ((page++))
@@ -53,10 +47,10 @@ jobs:
 
           total=$(ls -1 coupon-results-*.zip 2>/dev/null | wc -l)
           echo "=================================================================="
-          echo "SUCCESS! Downloaded $total artifacts!"
+          echo "SUCCESS! Downloaded $total artifacts in total!"
           echo "=================================================================="
 
-      - name: Upload everything as one big artifact
+      - name: Bundle and upload as one easy artifact
         uses: actions/upload-artifact@v4
         with:
           name: ALL-COUPON-RESULTS-${{ github.run_number }}-${{ github.run_attempt }}
