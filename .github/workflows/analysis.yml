@@ -1,62 +1,60 @@
-name: Download all existing artifacts
+name: Download All Coupon Results Ever
 
 on:
-  workflow_dispatch:   # or schedule, push, etc.
+  workflow_dispatch:    # You trigger it manually from the Actions tab
 
 permissions:
   contents: read
-  actions: read      # required to list artifacts
+  actions: read         # Needed to list and download artifacts
 
 jobs:
   download-all-artifacts:
     runs-on: ubuntu-latest
     steps:
-      - name: Download ALL artifacts from the repository
-        env:
-          GH_TOKEN: ${{ github.token }}   # default GITHUB_TOKEN has actions:read
+      - name: Checkout repository (optional, only if you need code)
+        uses: actions/checkout@v4
+
+      - name: Download EVERY coupon-results artifact from the repo
         run: |
           mkdir -p all-artifacts
           cd all-artifacts
 
-          # Pagination handling (GitHub returns max 100 per page)
+          echo "Starting download of all existing artifacts..."
+
           page=1
           while true; do
-            response=$(gh api \
-              -H "Accept: application/vnd.github+json" \
+            echo "Fetching page $page of artifacts..."
+            artifacts=$(gh api \
               "/repos/${{ github.repository }}/actions/artifacts?per_page=100&page=$page" \
-              --jq '.artifacts')
+              --paginate \
+              -q '.artifacts[] | select(.expired == false) | .id')
 
-            # If no more artifacts, break
-            if [[ "$response" == "[]" || -z "$response" ]]; then
-              echo "No more artifacts."
+            if [[ -z "$artifacts" ]]; then
+              echo "No more artifacts to fetch."
               break
             fi
 
-            echo "$response" | jq -r '.[] | "\(.id) \(.name) \(.workflow_run.id // "unknown") \(.created_at)"'
-
-            # Download each artifact in the current page
-            echo "$response" | jq -r '.[].id' | while read artifact_id; do
-              if [[ -n "$artifact_id" && "$artifact_id" != "null" ]]; then
-                echo "Downloading artifact ID $artifact_id ..."
+            echo "$artifacts" | while read -r id; do
+              if [[ -n "$id" ]]; then
+                echo "Downloading artifact ID $id ..."
                 gh api \
-                  -H "Accept: application/vnd.github+json" \
-                  "/repos/${{ github.repository }}/actions/artifacts/$artifact_id/zip" \
-                  --silent --output "artifact-$artifact_id.zip"
+                  --silent \
+                  "/repos/${{ github.repository }}/actions/artifacts/$id/zip" \
+                  -o "coupon-results-artifact-$id.zip"
               fi
             done
 
             ((page++))
           done
 
-          echo "All artifacts downloaded to $(pwd)"
-          ls -lh
+          total=$(ls -1 coupon-results-artifact-*.zip 2>/dev/null | wc -l)
+          echo "Successfully downloaded $total artifacts!"
+          ls -lh coupon-results-artifact-*.zip | head -15
 
-      # Optional: unzip everything (be careful with name clashes)
-      - name: Extract all artifacts
-        if: false   # enable if you really want to extract everything
-        run: |
-          for f in all-artifacts/*.zip; do
-            dir=$(basename "$f" .zip)
-            mkdir -p "extracted/$dir"
-            unzip -o "$f" -d "extracted/$dir"
-          done
+      - name: Upload all downloaded artifacts as one big bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: all-coupon-results-ever-${{ github.run_number }}-${{ github.run_attempt }}
+          path: all-artifacts/coupon-results-artifact-*.zip
+          retention-days: 30
+          if-no-files-found: error
