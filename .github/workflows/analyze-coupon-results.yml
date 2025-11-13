@@ -14,16 +14,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download the latest ALL-COUPON-RESULTS artifact from main
-        uses: dawidd6/action-download-artifact@v6
-        with:
-          github_token: ${{ github.token }}
-          workflow: download-all-coupon-results.yml
-          branch: main
-          workflow_conclusion: success     # ← THIS LINE FIXES IT
-          name: ALL-COUPON-RESULTS-*
-          path: downloaded/
-          check_artifacts: true            # extra safety
+      - name: Download the big bundle from the correct workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Find the latest successful run of "Download All Coupon Results Ever" on main
+          LATEST_RUN=$(gh api \
+            "/repos/${{ github.repository }}/actions/workflows/Download All Coupon Results Ever/runs" \
+            --jq '.workflow_runs[] | select(.conclusion=="success" and .head_branch=="main") | .id' \
+            | head -1)
+
+          echo "Latest successful run ID: $LATEST_RUN"
+          mkdir -p downloaded
+          gh run download "$LATEST_RUN" --name "ALL-COUPON-RESULTS-*" --dir downloaded/
 
       - name: Run analysis
         run: python analyze_coupon_results.py
