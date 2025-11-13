@@ -1,0 +1,32 @@
+name: Analyze All Coupon Results
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download the big artifact bundle
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          workflow: download-all-coupon-results.yml
+          name: ALL-COUPON-RESULTS-*
+          path: downloaded/
+
+      - name: Run analysis
+        run: python analyze_coupon_results.py
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: Coupon-Analysis-${{ github.run_number }}
+          path: results/
+          retention-days: 90
