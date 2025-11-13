@@ -14,35 +14,36 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download the exact latest ALL-COUPON-RESULTS-7-1 artifact
+      - name: Find and download the latest ALL-COUPON-RESULTS artifact
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          echo "Searching for artifact named ALL-COUPON-RESULTS-7-1 ..."
+          echo "Searching for the latest ALL-COUPON-RESULTS artifact..."
+
+          # Get the newest artifact that starts with ALL-COUPON-RESULTS-
           ARTIFACT_ID=$(gh api \
             "/repos/${{ github.repository }}/actions/artifacts" \
             --paginate \
-            -q '.artifacts[] | select(.name == "ALL-COUPON-RESULTS-7-1") | .id' \
+            -q '.artifacts[] 
+                 | select(.name | startswith("ALL-COUPON-RESULTS-") and (.expired==false or .expired==null))
+                 | .id' \
             | head -1)
 
           if [[ -z "$ARTIFACT_ID" ]]; then
-            echo "Artifact not found! Will try the newest one that starts with ALL-COUPON-RESULTS-"
-            ARTIFACT_ID=$(gh api \
-              "/repos/${{ github.repository }}/actions/artifacts" \
-              --paginate \
-              -q '.artifacts[] | select(.name | startswith("ALL-COUPON-RESULTS-")) | .id' \
-              | head -1)
-          fi
-
-          if [[ -z "$ARTIFACT_ID" ]]; then
-            echo "No artifact found at all!"
+            echo "No artifact found!"
             exit 1
           fi
 
-          echo "Downloading artifact ID $ARTIFACT_ID ..."
+          echo "Found artifact ID: $ARTIFACT_ID – downloading with curl..."
           mkdir -p downloaded
-          gh api "/repos/${{ github.repository }}/actions/artifacts/$ARTIFACT_ID/zip" \
-            --silent -o downloaded/bundle.zip
+
+          curl -L \
+               -H "Authorization: token $GH_TOKEN" \
+               -H "Accept: application/vnd.github.v3+json" \
+               "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/$ARTIFACT_ID/zip" \
+               -o downloaded/bundle.zip
+
+          echo "Unzipping..."
           unzip -q downloaded/bundle.zip -d downloaded/
           echo "Download complete!"
 
