@@ -1,87 +1,62 @@
-name: Coupon Status Change Analyzer
+name: Download all existing artifacts
 
 on:
-  # Triggers immediately after the "Run Coupon Checker" workflow is successful
-  workflow_run:
-    workflows: ["Run Coupon Checker"] # Must match the exact name
-    types: [completed]
-    if: success()
+  workflow_dispatch:   # or schedule, push, etc.
+
+permissions:
+  contents: read
+  actions: read      # required to list artifacts
 
 jobs:
-  change_analysis:
+  download-all-artifacts:
     runs-on: ubuntu-latest
-    # Grant necessary permissions for the workflow to read artifacts
-    permissions:
-      actions: read
-      contents: read
-      
     steps:
-      - name: Checkout Code (for analysis.py)
-        uses: actions/checkout@v4
-        
-      # --- DOWNLOAD PREVIOUS RUN'S ARTIFACT ---
-      # This action searches for and downloads the artifact from the *last successful* run
-      - name: Download Previous Run's Artifact (Baseline)
-        uses: dawidd6/action-download-artifact@v3
-        with:
-          workflow: Run Coupon Checker # Workflow name to search
-          name: coupon-results       # Artifact name to download
-          path: ./previous_run       # Directory to place the downloaded zip file
-          # Find the artifact from the *last successful* run (not this current one)
-          run_conclusion: success 
-          check_artifacts: true
-          
-      - name: Unzip Previous Results
-        # The zip file is downloaded into the 'previous_run' directory
+      - name: Download ALL artifacts from the repository
+        env:
+          GH_TOKEN: ${{ github.token }}   # default GITHUB_TOKEN has actions:read
         run: |
-          unzip ./previous_run/*.zip -d ./previous_run_data
-          
-      # --- DOWNLOAD CURRENT RUN'S ARTIFACT ---
-      # This is the standard way to download the artifact linked to the current workflow_run
-      - name: Download Current Run Artifact
-        uses: actions/github-script@v7
-        id: download_current
-        with:
-          script: |
-            # Find the artifact associated with the workflow_run event
-            const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              run_id: context.payload.workflow_run.id,
-            });
-            const matchArtifact = artifacts.data.artifacts.find(artifact => artifact.name === 'coupon-results');
-            
-            if (!matchArtifact) {
-              core.setFailed('Artifact "coupon-results" not found in the workflow run.');
-              return;
-            }
-            
-            const download = await github.rest.actions.downloadArtifact({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              artifact_id: matchArtifact.id,
-              archive_format: 'zip',
-            });
-            
-            require('fs').writeFileSync('current-results.zip', Buffer.from(download.data));
-            
-      - name: Unzip Current Results
-        # The zip file is created as 'current-results.zip' in the root directory
+          mkdir -p all-artifacts
+          cd all-artifacts
+
+          # Pagination handling (GitHub returns max 100 per page)
+          page=1
+          while true; do
+            response=$(gh api \
+              -H "Accept: application/vnd.github+json" \
+              "/repos/${{ github.repository }}/actions/artifacts?per_page=100&page=$page" \
+              --jq '.artifacts')
+
+            # If no more artifacts, break
+            if [[ "$response" == "[]" || -z "$response" ]]; then
+              echo "No more artifacts."
+              break
+            fi
+
+            echo "$response" | jq -r '.[] | "\(.id) \(.name) \(.workflow_run.id // "unknown") \(.created_at)"'
+
+            # Download each artifact in the current page
+            echo "$response" | jq -r '.[].id' | while read artifact_id; do
+              if [[ -n "$artifact_id" && "$artifact_id" != "null" ]]; then
+                echo "Downloading artifact ID $artifact_id ..."
+                gh api \
+                  -H "Accept: application/vnd.github+json" \
+                  "/repos/${{ github.repository }}/actions/artifacts/$artifact_id/zip" \
+                  --silent --output "artifact-$artifact_id.zip"
+              fi
+            done
+
+            ((page++))
+          done
+
+          echo "All artifacts downloaded to $(pwd)"
+          ls -lh
+
+      # Optional: unzip everything (be careful with name clashes)
+      - name: Extract all artifacts
+        if: false   # enable if you really want to extract everything
         run: |
-          unzip current-results.zip -d ./current_run_data
-          
-      # --- RUN ANALYSIS ---
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-
-      - name: Run Change Analysis Script
-        run: python analyze_changes.py
-
-      # --- UPLOAD FINAL REPORT ---
-      - name: Upload Change Report Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: coupon-change-report
-          path: ./change_report.txt
+          for f in all-artifacts/*.zip; do
+            dir=$(basename "$f" .zip)
+            mkdir -p "extracted/$dir"
+            unzip -o "$f" -d "extracted/$dir"
+          done
