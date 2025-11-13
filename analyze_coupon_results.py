@@ -2,17 +2,19 @@
 import zipfile, re, glob, os
 from collections import defaultdict, Counter
 
-# === Find and extract the big artifact ===
-artifact_zip = glob.glob("downloaded/ALL-COUPON-RESULTS-*.zip")[0]
-print(f"Found artifact: {artifact_zip}")
+# The workflow now puts the big zip in downloaded/bundle.zip and extracts to downloaded/
+# So we look there for the extracted result.txt files
+EXTRACTED_DIR = "downloaded"
 
-os.makedirs("extracted", exist_ok=True)
-with zipfile.ZipFile(artifact_zip) as z:
-    for name in z.namelist():
-        if name.endswith("result.txt"):
-            z.extract(name, "extracted")
+print(f"Looking for result.txt files in ./{EXTRACTED_DIR}/")
 
-# === Analysis ===
+txt_files = glob.glob(f"{EXTRACTED_DIR}/*result.txt")
+if not txt_files:
+    print("No result.txt files found! Did the download step work?")
+    exit(1)
+
+print(f"Found {len(txt_files)} result.txt files – starting analysis...")
+
 valid_per_day = defaultdict(int)
 invalid_per_day = defaultdict(int)
 expired_per_day = defaultdict(int)
@@ -22,7 +24,7 @@ valid_codes = set()
 total_checks = 0
 date_pattern = re.compile(r"Checked at: (\d{4}-\d{2}-\d{2})")
 
-for txt_file in glob.glob("extracted/*result.txt"):
+for txt_file in txt_files:
     with open(txt_file, encoding="utf-8", errors="ignore") as f:
         lines = f.readlines()
 
@@ -54,7 +56,7 @@ for txt_file in glob.glob("extracted/*result.txt"):
         elif "Error" in status:
             error_per_day[current_date] += 1
 
-# === Generate beautiful report ===
+# Generate report
 report = f"""# Coupon Results — Full Historical Analysis
 
 **Total checks:** {total_checks:,}  
@@ -66,7 +68,8 @@ Date       | Valid | Invalid | Expired | Error | Success%
 ---------- | ----- | ------- | ------- | ----- | --------
 """
 for date in sorted(valid_per_day.keys(), reverse=True):
-    if date == "unknown": continue
+    if date == "unknown":
+        continue
     v = valid_per_day[date]
     i = invalid_per_day[date]
     e = expired_per_day[date]
@@ -90,4 +93,4 @@ with open("results/FULL_REPORT.md", "w") as f:
 with open("results/VALID_CODES.txt", "w") as f:
     f.write("\n".join(sorted(valid_codes)))
 
-print("Analysis complete! Report ready.")
+print("Analysis complete – report ready!")
