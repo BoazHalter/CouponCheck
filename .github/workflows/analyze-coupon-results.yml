@@ -14,19 +14,27 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download the big bundle from the correct workflow
+      - name: Find and download the latest ALL-COUPON-RESULTS artifact (any run)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Find the latest successful run of "Download All Coupon Results Ever" on main
-          LATEST_RUN=$(gh api \
-            "/repos/${{ github.repository }}/actions/workflows/Download All Coupon Results Ever/runs" \
-            --jq '.workflow_runs[] | select(.conclusion=="success" and .head_branch=="main") | .id' \
+          # Find the most recent artifact that matches the name
+          LATEST_ARTIFACT_ID=$(gh api \
+            "/repos/${{ github.repository }}/actions/artifacts" \
+            --paginate \
+            -q '.artifacts[] | select(.name | startswith("ALL-COUPON-RESULTS-") and .expired == false) | .id' \
             | head -1)
 
-          echo "Latest successful run ID: $LATEST_RUN"
+          if [[ -z "$LATEST_ARTIFACT_ID" ]]; then
+            echo "No ALL-COUPON-RESULTS artifact found!"
+            exit 1
+          fi
+
+          echo "Found latest artifact ID: $LATEST_ARTIFACT_ID – downloading..."
           mkdir -p downloaded
-          gh run download "$LATEST_RUN" --name "ALL-COUPON-RESULTS-*" --dir downloaded/
+          gh api "/repos/${{ github.repository }}/actions/artifacts/$LATEST_ARTIFACT_ID/zip" \
+            --silent -o downloaded/bundle.zip
+          unzip downloaded/bundle.zip -d downloaded/
 
       - name: Run analysis
         run: python analyze_coupon_results.py
@@ -35,5 +43,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Coupon-Analysis-${{ github.run_number }}
+          path: results/
+          retention-days: 90          name: Coupon-Analysis-${{ github.run_number }}
           path: results/
           retention-days: 90
